@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 const discord = require('discord.js');
 const client = new discord.Client();
 const ip = require("ip");
+const fs = require("fs");
 const { PORT, TOKEN, CHANNEL, CHANNEL2 } = require('./config.json');
 
 
@@ -25,7 +26,7 @@ client.on('message', message => {
 });
 
 
-//時間取得用
+//時間取得
 function getTime() {
   let date = new Date();
   let hour = date.getHours();
@@ -38,7 +39,7 @@ function getTime() {
   return time;
 }
 
-//ユーザー発言時のイベント登録用JSON文字列を生成する関数
+//subscribe event
 function event(name) {
   return JSON.stringify({
     "header": {
@@ -53,7 +54,7 @@ function event(name) {
   });
 }
 
-//コマンドを実行するのに必要なやつ
+//commandRequest
 function command(x) {
   return JSON.stringify({
     header: {
@@ -72,7 +73,7 @@ function command(x) {
   });
 }
 
-//コマンド実行からのコールバック
+//commandResponse
 function callback() {
   return JSON.stringify({
     "body": {
@@ -92,26 +93,14 @@ wss.on('connection', ws => {
   console.log(`[log] ${ws._socket.remoteAddress}:${ws._socket.remotePort} との接続を開始しました`)
   client.channels.cache.get(CHANNEL).send(`[log] 接続を開始しました`);
 
-  sendCmd('list', callback => {
-    console.log(callback);
-  });
-  /*
-  sendCmd('testforblock ~~~ air', callback => {
-    console.log(callback);
-  });
-  */
-  // ユーザー発言時のイベントをsubscribe
+  fs.writeFileSync('players.json', JSON.stringify([], null, 2));
+  
+  // イベントを登録
   ws.send(event('PlayerMessage'));
   ws.send(callback());
-  ws.send(event('PlayerJoin'));
-  ws.send(event('PlayerLeave'));
 
-  // 各種イベント発生時に呼ばれる関数
   ws.on('message', packet => {
     const res = JSON.parse(packet);
-    if (res.body.eventName == 'PlayerJoin' || res.body.eventName == 'PlayerLeave') {
-      console.log(res);
-    }
     if (res.body.eventName === 'PlayerMessage') {
       if (res.body.properties.MessageType == 'chat' && res.body.properties.Sender != '外部') {
         let Message = res.body.properties.Message;
@@ -127,11 +116,6 @@ wss.on('connection', ws => {
         } else {
           ws.send(command(`tellraw ${Sender} {"rawtext":[{"text":"§4禁止語句が含まれているため送信をブロックしました。"}]}`));
         }
-        /*
-        if (res.body.properties.Message.startsWith('.close')) {
-          ws.send(command('connect off'))
-        }
-        */
         if (res.body.properties.Message.startsWith('.list')) {
           sendCmd('list', callback => {
             let listMsg = `現在の人数: ${callback.currentPlayerCount}/${callback.maxPlayerCount}\nプレイヤー: ${callback.players}\n最終更新: ${getTime()}`
@@ -224,21 +208,43 @@ wss.on('connection', ws => {
   });
 
   //人数をdiscordにリアルタイム表示
-  setInterval(function() {
+  setInterval(function () {
     sendCmd('list', callback => {
       let listMsg = `現在の人数: ${callback.currentPlayerCount}/${callback.maxPlayerCount}\nプレイヤー: ${callback.players}\n\n最終更新: ${getTime()}`
       let msg = client.channels.cache.get('881385592414416966').messages.fetch('881440275736723476')
       msg.then((value) => {
-        value.edit(
-          {embed: {
+        value.edit({
+          embed: {
             color: 16757683,
             description: listMsg
-          }}
-        );
+          }
+        });
       });
-    })
-      
-  },5000)
+      let playersBefore = JSON.parse(fs.readFileSync('players.json'));
+      let players = callback.players.split(', ');
+      fs.writeFileSync('players.json', JSON.stringify(players, null, 2));
+      if (players.length > playersBefore.length) {
+        let joined = players.filter(i => playersBefore.indexOf(i) == -1)
+        console.log(`Joined: ${joined}`);
+        client.channels.cache.get(CHANNEL2).send({
+          embed: {
+            color: 16757683,
+            description: `Joined: ${joined}`
+          }
+        });
+      }
+      if (players.length < playersBefore.length) {
+        let left = playersBefore.filter(i => players.indexOf(i) == -1)
+        console.log(`Left: ${left}`);
+        client.channels.cache.get(CHANNEL2).send({
+          embed: {
+            color: 16757683,
+            description: `Left: ${left}`
+          }
+        });
+      }
+    });
+  }, 5000);
 
   //コールバック付きでコマンド実行
   function sendCmd(command, callback) {
