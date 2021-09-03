@@ -93,7 +93,10 @@ wss.on('connection', ws => {
   console.log(`[log] ${ws._socket.remoteAddress}:${ws._socket.remotePort} との接続を開始しました`)
   client.channels.cache.get(CHANNEL).send(`[log] 接続を開始しました`);
 
-  fs.writeFileSync('players.json', JSON.stringify([], null, 2));
+  sendCmd('list', callback =>{
+    let players = callback.players.split(', ');
+    fs.writeFileSync('players.json', JSON.stringify(players, null, 2));
+  });
   
   // イベントを登録
   ws.send(event('PlayerMessage'));
@@ -101,8 +104,10 @@ wss.on('connection', ws => {
 
   ws.on('message', packet => {
     const res = JSON.parse(packet);
+    
     if (res.body.eventName === 'PlayerMessage') {
       if (res.body.properties.MessageType == 'chat' && res.body.properties.Sender != '外部') {
+        
         let Message = res.body.properties.Message;
         let Sender = res.body.properties.Sender;
         let sendTime = getTime();
@@ -121,13 +126,15 @@ wss.on('connection', ws => {
             let listMsg = `現在の人数: ${callback.currentPlayerCount}/${callback.maxPlayerCount}\nプレイヤー: ${callback.players}\n最終更新: ${getTime()}`
             client.channels.cache.get(CHANNEL).send({
               embed: {
-                color: 16757683,
+                color: '#4287f5',
                 description: listMsg
               }
             });
             ws.send(command(`tellraw @a {"rawtext":[{"text":"${listMsg}"}]}`));
           })
         }
+        
+        fs.writeFileSync(`player_data/${res.body.properties.Sender}.json`, JSON.stringify(res, null, 2));
       }
     }
   });
@@ -153,7 +160,7 @@ wss.on('connection', ws => {
         let listMsg = `現在の人数: ${callback.currentPlayerCount}/${callback.maxPlayerCount}\nプレイヤー: ${callback.players}\n最終更新: ${getTime()}`
         client.channels.cache.get(CHANNEL).send({
           embed: {
-            color: 16757683,
+            color: '#4287f5',
             description: listMsg
           }
         });
@@ -177,7 +184,7 @@ wss.on('connection', ws => {
             sendMsg(`§a${name[1]} のステータス§r\n採掘量: ${mine}\nレベル: ${level}\nログイン時間: ${login}分`)
             client.channels.cache.get(CHANNEL).send({
               embed: {
-                color: 16757683,
+                color: '#4287f5',
                 description: msg
               }
             });
@@ -196,7 +203,7 @@ wss.on('connection', ws => {
           let output = JSON.stringify(callback, null, 2);
           client.channels.cache.get(CHANNEL2).send({
             embed: {
-              color: 16757683,
+              color: '#4287f5',
               description: output
             }
           });
@@ -215,36 +222,41 @@ wss.on('connection', ws => {
       msg.then((value) => {
         value.edit({
           embed: {
-            color: 16757683,
+          color: '#4287f5',
             description: listMsg
           }
         });
       });
+      
       let playersBefore = JSON.parse(fs.readFileSync('players.json'));
       let players = callback.players.split(', ');
       fs.writeFileSync('players.json', JSON.stringify(players, null, 2));
       if (players.length > playersBefore.length) {
         let joined = players.filter(i => playersBefore.indexOf(i) == -1)
         console.log(`Joined: ${joined}`);
-        client.channels.cache.get(CHANNEL2).send({
+        client.channels.cache.get(CHANNEL).send({
           embed: {
-            color: 16757683,
-            description: `Joined: ${joined}`
+              color: '#48f542',
+            description: `Joined: ${joined}  ||  ${callback.currentPlayerCount}/${callback.maxPlayerCount}`
           }
         });
+        setTimeout(function() {
+          ws.send(command(`say @${joined} hi`))
+        }, 9000)
+        
       }
       if (players.length < playersBefore.length) {
         let left = playersBefore.filter(i => players.indexOf(i) == -1)
         console.log(`Left: ${left}`);
-        client.channels.cache.get(CHANNEL2).send({
+        client.channels.cache.get(CHANNEL).send({
           embed: {
-            color: 16757683,
-            description: `Left: ${left}`
+          color: '#f54242',
+            description: `Left: ${left}  ||  ${callback.currentPlayerCount}/${callback.maxPlayerCount}`
           }
         });
       }
     });
-  }, 5000);
+  }, 3000);
 
   //コールバック付きでコマンド実行
   function sendCmd(command, callback) {
